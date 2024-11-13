@@ -35,9 +35,10 @@ This project is a full-stack application that allows users to schedule bulk emai
       cd frontend
       npm install
 
-### For backend
-cd ../backend
-npm install
+   ### For backend
+      ```bash
+      cd ../backend
+      npm install
 
 3. **Set up environment variables: Create a .env file in the backend directory and include these**:
 CLIENT_ID = 'Google Client ID'
