@@ -1,0 +1,24 @@
+body{
+    background-color: #ffffff;
+}
+
+form{
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+}
+
+.authBtn, .csvBtn, .sendBtn{
+    background-color: #5585b5;
+    border: none;
+    border-radius: 5px;
+    height: 50px;
+    width: 290px;
+}
+.authBtn:hover, .csvBtn:hover, .sendBtn:hover{
+    background-color: #7ec9d3;
+}
+
+.promptInput{
+    border-radius: 5px;
+}
