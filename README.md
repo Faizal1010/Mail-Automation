@@ -30,11 +30,11 @@ This project is a full-stack application that allows users to schedule bulk emai
    cd <repository-directory>
 
 2. **Install dependencies for both frontend and backend**:
-# For frontend
+### For frontend
 cd frontend
 npm install
 
-# For backend
+### For backend
 cd ../backend
 npm install
 
@@ -47,11 +47,11 @@ MONGO_URI = 'Mongodb Connection string'
 #### Replace each value with the actual keys and URIs.
 
 4. **Run the App**
-# For frontend
+### For frontend
 cd frontend
 npm run dev
 
-# For backend
+### For backend
 cd backend
 node server
 
@@ -79,7 +79,7 @@ GET: Retrieves analytics data for scheduled emails.
 4. /send-bulk-emails
 POST: Accepts a CSV file, instructions, schedule time, and throttle limit to schedule bulk emails.
 
-## Usage
+# Usage
 1. Authenticate: Use the "Authenticate with Google" button to log in.
 2. Schedule Emails: Upload a CSV file, add instructions, select a schedule time, and set a throttle limit. Submit to schedule emails.
 3. The analytics table shows the email status, recipient information, and scheduled times.
