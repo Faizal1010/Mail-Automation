@@ -31,14 +31,12 @@ This project is a full-stack application that allows users to schedule bulk emai
 
 2. **Install dependencies for both frontend and backend**:
 # For frontend
-   ```bash
-   cd frontend
-   npm install
+cd frontend
+npm install
 
 # For backend
-   ```bash
-   cd ../backend
-   npm install
+cd ../backend
+npm install
 
 3. **Set up environment variables: Create a .env file in the backend directory and include these**:
 CLIENT_ID = 'Google Client ID'
@@ -49,7 +47,13 @@ MONGO_URI = 'Mongodb Connection string'
 #### Replace each value with the actual keys and URIs.
 
 4. **Run the App**
+# For frontend
+cd frontend
+npm run dev
 
+# For backend
+cd backend
+node server
 
 
 
