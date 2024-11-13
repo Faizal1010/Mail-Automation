@@ -31,8 +31,9 @@ This project is a full-stack application that allows users to schedule bulk emai
 
 2. **Install dependencies for both frontend and backend**:
 ### For frontend
-cd frontend
-npm install
+   ```bash
+   cd frontend
+   npm install
 
 ### For backend
 cd ../backend
