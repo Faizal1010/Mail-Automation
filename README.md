@@ -1,4 +1,4 @@
-# Email Scheduler and Analytics App
+# Email Automation
 
 This project is a full-stack application that allows users to schedule bulk emails with custom instructions, schedule times, and throttle limits. Users can also authenticate with Google and track analytics for sent emails. The frontend is built with React, while the backend uses Node.js, Express, and MongoDB.
 
