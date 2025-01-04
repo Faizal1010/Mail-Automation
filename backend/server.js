@@ -95,7 +95,7 @@ app.post('/send-bulk-emails', upload.single('csvFile'), async (req, res) => {
       try {
         for (const row of csvData) {
           const rowString = JSON.stringify(row);
-          const prompt = `strict Rule: Dont leave any blank spaces or placeholders to be filled by me. Generate a professional email in JSON format with "CompanyName", "from", "to", "subject", and "body" fields filled in completely. Dont ask further details. These are the details of company along with mail id${rowString} and these are my details ${instructions}`;
+          const prompt = `strict Rule: Dont leave any blank spaces or placeholders to be filled by me. Generate a professional email in JSON format with "CompanyName", "to", "subject", and "body" fields filled in completely. Dont ask further details. These are the details of company along with mail id${rowString} and these are my details ${instructions}`;
 
           const result = await model.generateContent(prompt);
           const jsonMatch = result.response.text().match(/\{[\s\S]*\}/);
@@ -105,6 +105,7 @@ app.post('/send-bulk-emails', upload.single('csvFile'), async (req, res) => {
           }
 
           const emailData = JSON.parse(jsonMatch[0]);
+          console.log(emailData)
           const companyName = emailData.CompanyName;
 
           if (!emailData.to || !emailData.subject || !emailData.body) {
@@ -121,6 +122,79 @@ app.post('/send-bulk-emails', upload.single('csvFile'), async (req, res) => {
 
           await EmailQueue.create({
             ...emailData,
+            from: userEmail,
+            sendTime: scheduleTime,
+            throttleLimit,
+            userEmail,
+            companyName,
+          });
+        }
+        res.json({ success: true, message: 'Emails scheduled successfully' });
+      } catch (error) {
+        console.error('Error scheduling emails:', error);
+        res.status(500).json({ error: 'Failed to schedule emails' });
+      } finally {
+        fs.unlink(req.file.path, (err) => {
+          if (err) console.error('Error deleting file:', err);
+        });
+      }
+    });
+});
+
+app.post('/send-bulk-emails/user', upload.single('csvFile'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'CSV file is missing. Please upload a valid CSV file.' });
+  }
+
+  const throttleLimit = parseInt(req.body.throttleLimit, 10) || 10;
+  const scheduleTime = new Date(req.body.scheduleTime) || new Date();
+  const body = req.body.body || '';
+  const subject = req.body.subject || '';
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+  let csvData = [];
+
+  fs.createReadStream(req.file.path)
+    .pipe(csv())
+    .on('data', (data) => {
+      csvData.push(data);
+    })
+    .on('end', async () => {
+      try {
+        for (const row of csvData) {
+          const rowString = JSON.stringify(row);
+          const prompt = `Extract all the details and giveit to me in json format with keys "to", "CompanyName" from here -> ${rowString}`;
+
+          const result = await model.generateContent(prompt);
+          const jsonMatch = result.response.text().match(/\{[\s\S]*\}/);
+          if (!jsonMatch) {
+            console.error('Failed to extract JSON from response');
+            continue;
+          }
+
+          const emailData = JSON.parse(jsonMatch[0]);
+          console.log(emailData)
+          const companyName = emailData.CompanyName;
+
+          if (!emailData.to) {
+            console.error('Invalid email data generated, missing fields:', emailData);
+            await EmailQueue.create({
+              ...emailData,
+              body,
+              subject,
+              from: userEmail,
+              status: 'failed',
+              userEmail,
+              companyName,
+            });
+            continue;
+          }
+
+          await EmailQueue.create({
+            ...emailData,
+            body,
+            subject,
             from: userEmail,
             sendTime: scheduleTime,
             throttleLimit,

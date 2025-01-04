@@ -6,6 +6,7 @@ form{
     display: flex;
     flex-direction: column;
     gap: 30px;
+    background-color: #7ec9d3;
 }
 
 .authBtn, .csvBtn, .sendBtn{
@@ -21,4 +22,22 @@ form{
 
 .promptInput{
     border-radius: 5px;
+}
+
+h1{
+    text-align: center;
+    height: 50px;
+    background-color: rgb(173, 182, 173);
+    padding: 20px;
+    width: fit-content;
+    border-radius: 28px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: auto;
+}
+
+.form-container{
+    display: flex;
+    flex-direction: row;
 }
