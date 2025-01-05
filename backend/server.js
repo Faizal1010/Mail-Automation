@@ -8,6 +8,10 @@ const csv = require('csv-parser');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const cron = require('node-cron');
+const mime = require('mime-types');
+const path = require('path');
+
+
 
 dotenv.config();
 
@@ -15,7 +19,19 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const upload = multer({ dest: 'uploads/' });
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/');
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname); // Extract the file extension
+    cb(null, `${Date.now()}-${file.fieldname}${ext}`); // Append the extension to the file name
+  },
+});
+
+const upload = multer({ storage });
+
+
 const oauth2Client = new google.auth.OAuth2(
   process.env.CLIENT_ID,
   process.env.CLIENT_SECRET,
@@ -36,7 +52,9 @@ const emailQueueSchema = new mongoose.Schema({
   status: { type: String, default: 'scheduled' },
   companyName: String,
   userEmail: String,
+  attachmentPath: String,
 });
+
 const EmailQueue = mongoose.model('EmailQueue', emailQueueSchema);
 
 // This route is for authentication via google OAuth
@@ -73,20 +91,24 @@ app.get('/auth/google/callback', async (req, res) => {
 });
 
 //This route is for sending mails
-app.post('/send-bulk-emails', upload.single('csvFile'), async (req, res) => {
-  if (!req.file) {
+
+// Updated route handler for '/send-bulk-emails'
+app.post('/send-bulk-emails', upload.fields([{ name: 'csvFile' }, { name: 'attachment' }]), async (req, res) => {
+  if (!req.files['csvFile']) {
     return res.status(400).json({ error: 'CSV file is missing. Please upload a valid CSV file.' });
   }
 
+  const attachmentPath = req.files['attachment'] ? req.files['attachment'][0].path : null;
   const throttleLimit = parseInt(req.body.throttleLimit, 10) || 10;
   const scheduleTime = new Date(req.body.scheduleTime) || new Date();
   const instructions = req.body.instructions || '';
+
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
   let csvData = [];
 
-  fs.createReadStream(req.file.path)
+  fs.createReadStream(req.files['csvFile'][0].path)
     .pipe(csv())
     .on('data', (data) => {
       csvData.push(data);
@@ -95,27 +117,23 @@ app.post('/send-bulk-emails', upload.single('csvFile'), async (req, res) => {
       try {
         for (const row of csvData) {
           const rowString = JSON.stringify(row);
-          const prompt = `strict Rule: Dont leave any blank spaces or placeholders to be filled by me. Generate a professional email in JSON format with "CompanyName", "to", "subject", and "body" fields filled in completely. Dont ask further details. These are the details of company along with mail id${rowString} and these are my details ${instructions}`;
+          const prompt = `Generate a professional email in JSON format with 'CompanyName', 'to', 'subject', and 'body' fields filled in completely. Details: ${rowString}, Instructions: ${instructions}`;
 
           const result = await model.generateContent(prompt);
           const jsonMatch = result.response.text().match(/\{[\s\S]*\}/);
-          if (!jsonMatch) {
-            console.error('Failed to extract JSON from response');
-            continue;
-          }
+          if (!jsonMatch) continue;
 
           const emailData = JSON.parse(jsonMatch[0]);
-          console.log(emailData)
           const companyName = emailData.CompanyName;
 
           if (!emailData.to || !emailData.subject || !emailData.body) {
-            console.error('Invalid email data generated, missing fields:', emailData);
             await EmailQueue.create({
               ...emailData,
               from: userEmail,
               status: 'failed',
               userEmail,
               companyName,
+              attachmentPath,
             });
             continue;
           }
@@ -127,35 +145,33 @@ app.post('/send-bulk-emails', upload.single('csvFile'), async (req, res) => {
             throttleLimit,
             userEmail,
             companyName,
+            attachmentPath,
           });
         }
         res.json({ success: true, message: 'Emails scheduled successfully' });
       } catch (error) {
-        console.error('Error scheduling emails:', error);
         res.status(500).json({ error: 'Failed to schedule emails' });
       } finally {
-        fs.unlink(req.file.path, (err) => {
-          if (err) console.error('Error deleting file:', err);
-        });
+        fs.unlink(req.files['csvFile'][0].path, () => {});
       }
     });
 });
 
-app.post('/send-bulk-emails/user', upload.single('csvFile'), async (req, res) => {
-  if (!req.file) {
+// Updated route handler for '/send-bulk-emails/user'
+app.post('/send-bulk-emails/user', upload.fields([{ name: 'csvFile' }, { name: 'attachment' }]), async (req, res) => {
+  if (!req.files['csvFile']) {
     return res.status(400).json({ error: 'CSV file is missing. Please upload a valid CSV file.' });
   }
 
+  const attachmentPath = req.files['attachment'] ? req.files['attachment'][0].path : null;
   const throttleLimit = parseInt(req.body.throttleLimit, 10) || 10;
   const scheduleTime = new Date(req.body.scheduleTime) || new Date();
   const body = req.body.body || '';
   const subject = req.body.subject || '';
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
   let csvData = [];
 
-  fs.createReadStream(req.file.path)
+  fs.createReadStream(req.files['csvFile'][0].path)
     .pipe(csv())
     .on('data', (data) => {
       csvData.push(data);
@@ -163,22 +179,9 @@ app.post('/send-bulk-emails/user', upload.single('csvFile'), async (req, res) =>
     .on('end', async () => {
       try {
         for (const row of csvData) {
-          const rowString = JSON.stringify(row);
-          const prompt = `Extract all the details and giveit to me in json format with keys "to", "CompanyName" from here -> ${rowString}`;
-
-          const result = await model.generateContent(prompt);
-          const jsonMatch = result.response.text().match(/\{[\s\S]*\}/);
-          if (!jsonMatch) {
-            console.error('Failed to extract JSON from response');
-            continue;
-          }
-
-          const emailData = JSON.parse(jsonMatch[0]);
-          console.log(emailData)
-          const companyName = emailData.CompanyName;
+          const emailData = { to: row.email, companyName: row.companyName };
 
           if (!emailData.to) {
-            console.error('Invalid email data generated, missing fields:', emailData);
             await EmailQueue.create({
               ...emailData,
               body,
@@ -186,7 +189,7 @@ app.post('/send-bulk-emails/user', upload.single('csvFile'), async (req, res) =>
               from: userEmail,
               status: 'failed',
               userEmail,
-              companyName,
+              attachmentPath,
             });
             continue;
           }
@@ -199,17 +202,14 @@ app.post('/send-bulk-emails/user', upload.single('csvFile'), async (req, res) =>
             sendTime: scheduleTime,
             throttleLimit,
             userEmail,
-            companyName,
+            attachmentPath,
           });
         }
         res.json({ success: true, message: 'Emails scheduled successfully' });
       } catch (error) {
-        console.error('Error scheduling emails:', error);
         res.status(500).json({ error: 'Failed to schedule emails' });
       } finally {
-        fs.unlink(req.file.path, (err) => {
-          if (err) console.error('Error deleting file:', err);
-        });
+        fs.unlink(req.files['csvFile'][0].path, () => {});
       }
     });
 });
@@ -247,28 +247,87 @@ cron.schedule('* * * * *', async () => {
         }
 
         const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-        const rawEmail = Buffer.from(
-          `From: ${email.from}\r\nTo: ${email.to}\r\nSubject: ${email.subject}\r\n\r\n${email.body}`
-        )
+
+        let rawEmail = [
+          `From: ${email.from}`,
+          `To: ${email.to}`,
+          `Subject: ${email.subject}`,
+          `MIME-Version: 1.0`,
+          `Content-Type: multipart/mixed; boundary="boundary123"`,
+          ``,
+          `--boundary123`,
+          `Content-Type: text/plain; charset="UTF-8"`,
+          ``,
+          `${email.body}`,
+          ``
+        ];
+        
+        // Add attachment if present
+        if (email.attachmentPath) {
+          const filePath = path.resolve(email.attachmentPath);
+          if (fs.existsSync(filePath)) {
+            const fileContent = fs.readFileSync(filePath).toString('base64');
+            const fileName = path.basename(filePath);
+            const mimeType = mime.lookup(filePath) || 'application/octet-stream';
+        
+            rawEmail.push(
+              `--boundary123`,
+              `Content-Type: ${mimeType}; name="${fileName}"`,
+              `Content-Disposition: attachment; filename="${fileName}"`,
+              `Content-Transfer-Encoding: base64`,
+              ``,
+              `${fileContent}`
+            );
+          }
+        }
+        if (email.attachmentPath) {
+          console.log('Attachment Path:', email.attachmentPath);
+          console.log('MIME Type:', mime.lookup(email.attachmentPath) || 'Fallback: application/octet-stream');
+          console.log(
+            'Base64 Encoded Content:',
+            fs.readFileSync(email.attachmentPath).toString('base64').slice(0, 100)
+          ); // Log first 100 chars
+        }
+        
+        
+        // End the email with the boundary
+        rawEmail.push(`--boundary123--`);
+        
+        // Encode the raw email to Base64URL
+        const encodedMessage = Buffer.from(rawEmail.join('\r\n'))
           .toString('base64')
           .replace(/\+/g, '-')
           .replace(/\//g, '_')
           .replace(/=+$/, '');
+        
 
+        // Send the email
         await gmail.users.messages.send({
           userId: 'me',
-          requestBody: { raw: rawEmail },
+          requestBody: {
+            raw: encodedMessage,
+          },
         });
 
         email.status = 'sent';
       } catch (error) {
-        console.error('Error sending email:', error);
+        console.error('Error sending email:', error.message || error);
         email.status = 'failed';
       }
       await email.save();
+
+
+      if (email.attachmentPath) {
+        fs.unlink(email.attachmentPath, (err) => {
+          if (err) console.error('Error deleting attachment:', err);
+          else console.log('Attachment deleted:', email.attachmentPath);
+        });
+      }
+      
     }
   }
 });
+
 
 // Analytics endpoint to fetch real time data from db
 app.get('/analytics', async (req, res) => {

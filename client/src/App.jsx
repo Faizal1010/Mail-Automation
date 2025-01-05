@@ -7,6 +7,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [analyticsData, setAnalyticsData] = useState([]);
   const [file, setFile] = useState(null);
+  const [attachment, setAttachment] = useState(null);
   const [instructions, setInstructions] = useState("");
   const [scheduleTime, setScheduleTime] = useState("");
   const [throttleLimit, setThrottleLimit] = useState(10);
@@ -47,6 +48,10 @@ function App() {
     setFile(event.target.files[0]);
   };
 
+  const handleAttachmentChange = (event) => {
+    setAttachment(event.target.files[0]);
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
 
@@ -57,6 +62,9 @@ function App() {
 
     const formData = new FormData();
     formData.append('csvFile', file);
+    if (attachment) {
+      formData.append('attachment', attachment);
+    }
     formData.append('instructions', instructions);
     formData.append('scheduleTime', scheduleTime);
     formData.append('throttleLimit', throttleLimit);
@@ -102,6 +110,11 @@ function App() {
               rows="4"
               style={{ margin: "10px 0" }}
             />
+            </div>
+
+            <div>
+              <div>Attachment</div>
+              <input type="file" onChange={handleAttachmentChange} accept=".pdf,.doc,.docx,.jpg,.png" style={{ marginBottom: "10px" }} />
             </div>
 
             <div>
