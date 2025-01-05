@@ -7,6 +7,7 @@ function UserEmail() {
   const [analyticsData, setAnalyticsData] = useState([]);
   const [file, setFile] = useState(null);
   const [body, setBody] = useState("");
+  const [attachment, setAttachment] = useState(null);
   const [scheduleTime, setScheduleTime] = useState("");
   const [throttleLimit, setThrottleLimit] = useState(10);
   const [subject, setSubject] = useState('')
@@ -57,6 +58,10 @@ function UserEmail() {
 
     const formData = new FormData();
     formData.append('csvFile', file);
+    if (attachment) {
+      formData.append('attachment', attachment);
+    }
+    formData.append('csvFile', file);
     formData.append('subject', subject);
     formData.append('body', body);
     formData.append('scheduleTime', scheduleTime);
@@ -75,6 +80,10 @@ function UserEmail() {
     }
   };
 
+
+  const handleAttachmentChange = (event) => {
+    setAttachment(event.target.files[0]);
+  };
   return (
     <div className="App" style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       {/* <h1>Email Scheduler and Analytics</h1> */}
@@ -108,6 +117,11 @@ function UserEmail() {
               rows="4"
               style={{ margin: "10px 0" }}
             />
+            </div>
+
+            <div>
+              <div>Attachment</div>
+              <input type="file" onChange={handleAttachmentChange} accept=".pdf,.doc,.docx,.jpg,.png" style={{ marginBottom: "10px" }} />
             </div>
 
             <div>

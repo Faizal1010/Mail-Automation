@@ -117,7 +117,7 @@ app.post('/send-bulk-emails', upload.fields([{ name: 'csvFile' }, { name: 'attac
       try {
         for (const row of csvData) {
           const rowString = JSON.stringify(row);
-          const prompt = `Generate a professional email in JSON format with 'CompanyName', 'to', 'subject', and 'body' fields filled in completely. Details: ${rowString}, Instructions: ${instructions}`;
+          const prompt = `Generate a professional email in JSON format with 'CompanyName', 'to', 'subject', and 'body' fields filled in completely. You will find the email of company and other relevant details below. Dont create any email address by yourself : Details: ${rowString}, Instructions: ${instructions}`;
 
           const result = await model.generateContent(prompt);
           const jsonMatch = result.response.text().match(/\{[\s\S]*\}/);
@@ -165,10 +165,18 @@ app.post('/send-bulk-emails/user', upload.fields([{ name: 'csvFile' }, { name: '
 
   const attachmentPath = req.files['attachment'] ? req.files['attachment'][0].path : null;
   const throttleLimit = parseInt(req.body.throttleLimit, 10) || 10;
-  const scheduleTime = new Date(req.body.scheduleTime) || new Date();
+  
+  // Parse and validate scheduleTime
+  let scheduleTime = new Date(req.body.scheduleTime);
+  if (isNaN(scheduleTime)) {
+    scheduleTime = new Date(); // Default to current time if invalid
+  }
+
   const body = req.body.body || '';
   const subject = req.body.subject || '';
 
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
   let csvData = [];
 
   fs.createReadStream(req.files['csvFile'][0].path)
@@ -179,11 +187,23 @@ app.post('/send-bulk-emails/user', upload.fields([{ name: 'csvFile' }, { name: '
     .on('end', async () => {
       try {
         for (const row of csvData) {
-          const emailData = { to: row.email, companyName: row.companyName };
+          const rowString = JSON.stringify(row);
+          const prompt = `Extract all the details and give it to me in json format with keys "to", "CompanyName" from here -> ${rowString}`;
+
+          const result = await model.generateContent(prompt);
+          const jsonMatch = result.response.text().match(/\{[\s\S]*\}/);
+          if (!jsonMatch) continue;
+
+          const emailData = JSON.parse(jsonMatch[0]);
+          const companyName = emailData.CompanyName;
+
+          // Log the schedule time for debugging
+          console.log(`Schedule Time for ${companyName}:`, scheduleTime);
 
           if (!emailData.to) {
             await EmailQueue.create({
               ...emailData,
+              companyName,
               body,
               subject,
               from: userEmail,
@@ -196,6 +216,7 @@ app.post('/send-bulk-emails/user', upload.fields([{ name: 'csvFile' }, { name: '
 
           await EmailQueue.create({
             ...emailData,
+            companyName,
             body,
             subject,
             from: userEmail,
@@ -213,6 +234,94 @@ app.post('/send-bulk-emails/user', upload.fields([{ name: 'csvFile' }, { name: '
       }
     });
 });
+
+
+
+
+// Function to handle attachment logic
+const handleAttachment = (attachmentPath) => {
+  if (!attachmentPath) return null; // No attachment provided
+  const filePath = path.resolve(attachmentPath);
+  if (!fs.existsSync(filePath)) {
+    console.error('Attachment file does not exist:', filePath);
+    return null;
+  }
+  const fileContent = fs.readFileSync(filePath).toString('base64');
+  const fileName = path.basename(filePath);
+  const mimeType = mime.lookup(filePath) || 'application/octet-stream';
+
+  return {
+    content: fileContent,
+    name: fileName,
+    type: mimeType,
+  };
+};
+// Function to send email
+const sendEmail = async (email, oauth2Client) => {
+  try {
+    if (userTokens.expiry_date && userTokens.expiry_date <= Date.now()) {
+      const newTokens = await oauth2Client.refreshAccessToken();
+      oauth2Client.setCredentials(newTokens.credentials);
+      userTokens = newTokens.credentials;
+    }
+
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+    // Prepare the raw email
+    let rawEmail = [
+      `From: ${email.from}`,
+      `To: ${email.to}`,
+      `Subject: ${email.subject}`,
+      `MIME-Version: 1.0`,
+      `Content-Type: multipart/mixed; boundary="boundary123"`,
+      ``,
+      `--boundary123`,
+      `Content-Type: text/plain; charset="UTF-8"`,
+      ``,
+      `${email.body}`,
+      ``,
+    ];
+
+    // Handle attachment
+    const attachment = handleAttachment(email.attachmentPath);
+    if (attachment) {
+      rawEmail.push(
+        `--boundary123`,
+        `Content-Type: ${attachment.type}; name="${attachment.name}"`,
+        `Content-Disposition: attachment; filename="${attachment.name}"`,
+        `Content-Transfer-Encoding: base64`,
+        ``,
+        `${attachment.content}`
+      );
+    }
+
+    // End the email with the boundary
+    rawEmail.push(`--boundary123--`);
+
+    // Encode the raw email to Base64URL
+    const encodedMessage = Buffer.from(rawEmail.join('\r\n'))
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    // Send the email
+    await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: {
+        raw: encodedMessage,
+      },
+    });
+
+    email.status = 'sent';
+    console.log(`Email sent to ${email.to}`);
+  } catch (error) {
+    console.error('Error sending email:', error.message || error);
+    email.status = 'failed';
+  } finally {
+    await email.save();
+  }
+};
 
 // Cron is used to send mails at scheduled time
 cron.schedule('* * * * *', async () => {
@@ -237,94 +346,23 @@ cron.schedule('* * * * *', async () => {
 
   for (const [throttleLimit, emails] of Object.entries(emailsByThrottleLimit)) {
     const emailsToSend = emails.slice(0, throttleLimit);
-
+    
     for (const email of emailsToSend) {
       try {
-        if (userTokens.expiry_date && userTokens.expiry_date <= Date.now()) {
-          const newTokens = await oauth2Client.refreshAccessToken();
-          oauth2Client.setCredentials(newTokens.credentials);
-          userTokens = newTokens.credentials;
-        }
-
-        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-
-        let rawEmail = [
-          `From: ${email.from}`,
-          `To: ${email.to}`,
-          `Subject: ${email.subject}`,
-          `MIME-Version: 1.0`,
-          `Content-Type: multipart/mixed; boundary="boundary123"`,
-          ``,
-          `--boundary123`,
-          `Content-Type: text/plain; charset="UTF-8"`,
-          ``,
-          `${email.body}`,
-          ``
-        ];
-        
-        // Add attachment if present
-        if (email.attachmentPath) {
-          const filePath = path.resolve(email.attachmentPath);
-          if (fs.existsSync(filePath)) {
-            const fileContent = fs.readFileSync(filePath).toString('base64');
-            const fileName = path.basename(filePath);
-            const mimeType = mime.lookup(filePath) || 'application/octet-stream';
-        
-            rawEmail.push(
-              `--boundary123`,
-              `Content-Type: ${mimeType}; name="${fileName}"`,
-              `Content-Disposition: attachment; filename="${fileName}"`,
-              `Content-Transfer-Encoding: base64`,
-              ``,
-              `${fileContent}`
-            );
-          }
-        }
-        if (email.attachmentPath) {
-          console.log('Attachment Path:', email.attachmentPath);
-          console.log('MIME Type:', mime.lookup(email.attachmentPath) || 'Fallback: application/octet-stream');
-          console.log(
-            'Base64 Encoded Content:',
-            fs.readFileSync(email.attachmentPath).toString('base64').slice(0, 100)
-          ); // Log first 100 chars
-        }
-        
-        
-        // End the email with the boundary
-        rawEmail.push(`--boundary123--`);
-        
-        // Encode the raw email to Base64URL
-        const encodedMessage = Buffer.from(rawEmail.join('\r\n'))
-          .toString('base64')
-          .replace(/\+/g, '-')
-          .replace(/\//g, '_')
-          .replace(/=+$/, '');
-        
-
-        // Send the email
-        await gmail.users.messages.send({
-          userId: 'me',
-          requestBody: {
-            raw: encodedMessage,
-          },
-        });
-
-        email.status = 'sent';
+        await sendEmail(email, oauth2Client); // Call the sendEmail function
       } catch (error) {
-        console.error('Error sending email:', error.message || error);
-        email.status = 'failed';
+        console.error('Error sending email:', error);
       }
-      await email.save();
-
-
-      if (email.attachmentPath) {
-        fs.unlink(email.attachmentPath, (err) => {
-          if (err) console.error('Error deleting attachment:', err);
-          else console.log('Attachment deleted:', email.attachmentPath);
-        });
-      }
-      
     }
+    
+    // Delete the attachment file after sending all emails
+    if (emailsToSend.length > 0 && emailsToSend[0].attachmentPath) {
+      fs.unlink(emailsToSend[0].attachmentPath, (err) => {
+        if (err) console.error('Error deleting attachment:', err);
+        else console.log('Attachment deleted:', emailsToSend[0].attachmentPath);
+      });
+    }
+    
   }
 });
 
