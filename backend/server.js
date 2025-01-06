@@ -165,7 +165,7 @@ app.post('/send-bulk-emails/user', upload.fields([{ name: 'csvFile' }, { name: '
 
   const attachmentPath = req.files['attachment'] ? req.files['attachment'][0].path : null;
   const throttleLimit = parseInt(req.body.throttleLimit, 10) || 10;
-  
+
   // Parse and validate scheduleTime
   let scheduleTime = new Date(req.body.scheduleTime);
   if (isNaN(scheduleTime)) {
@@ -175,7 +175,7 @@ app.post('/send-bulk-emails/user', upload.fields([{ name: 'csvFile' }, { name: '
   const body = req.body.body || '';
   const subject = req.body.subject || '';
 
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY); // Retaining your LLM initialization
   const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
   let csvData = [];
 
@@ -187,53 +187,71 @@ app.post('/send-bulk-emails/user', upload.fields([{ name: 'csvFile' }, { name: '
     .on('end', async () => {
       try {
         for (const row of csvData) {
-          const rowString = JSON.stringify(row);
-          const prompt = `Extract all the details and give it to me in json format with keys "to", "CompanyName" from here -> ${rowString}`;
-
-          const result = await model.generateContent(prompt);
-          const jsonMatch = result.response.text().match(/\{[\s\S]*\}/);
-          if (!jsonMatch) continue;
-
-          const emailData = JSON.parse(jsonMatch[0]);
-          const companyName = emailData.CompanyName;
-
-          // Log the schedule time for debugging
-          console.log(`Schedule Time for ${companyName}:`, scheduleTime);
-
-          if (!emailData.to) {
+          try {
+            const rowString = JSON.stringify(row);
+            const prompt = `Extract all the details and give it to me in JSON format with keys "to", "CompanyName" from here -> ${rowString}`;
+            const result = await model.generateContent(prompt);
+    
+            const jsonMatch = result.response.text().match(/\{[\s\S]*\}/);
+            if (!jsonMatch) {
+              console.error(`No JSON match for row: ${rowString}`);
+              continue;
+            }
+    
+            let emailData;
+            try {
+              emailData = JSON.parse(jsonMatch[0]);
+            } catch (err) {
+              console.error(`Error parsing JSON for row: ${rowString}`, err);
+              continue;
+            }
+    
+            const companyName = emailData.CompanyName;
+    
+            if (!emailData.to) {
+              console.error(`No recipient email for row: ${rowString}`);
+              await EmailQueue.create({
+                ...emailData,
+                companyName,
+                body,
+                subject,
+                from: userEmail,
+                status: 'failed',
+                userEmail,
+                attachmentPath,
+              });
+              continue;
+            }
+    
             await EmailQueue.create({
               ...emailData,
               companyName,
               body,
               subject,
               from: userEmail,
-              status: 'failed',
+              sendTime: scheduleTime || new Date(),
+              throttleLimit,
               userEmail,
               attachmentPath,
             });
-            continue;
+    
+            console.log(`Scheduled email for: ${emailData.to}`);
+          } catch (err) {
+            console.error(`Error processing row: ${JSON.stringify(row)} -`, err);
           }
-
-          await EmailQueue.create({
-            ...emailData,
-            companyName,
-            body,
-            subject,
-            from: userEmail,
-            sendTime: scheduleTime,
-            throttleLimit,
-            userEmail,
-            attachmentPath,
-          });
         }
+    
         res.json({ success: true, message: 'Emails scheduled successfully' });
       } catch (error) {
+        console.error('Error during CSV processing:', error);
         res.status(500).json({ error: 'Failed to schedule emails' });
       } finally {
         fs.unlink(req.files['csvFile'][0].path, () => {});
       }
     });
+    
 });
+
 
 
 
