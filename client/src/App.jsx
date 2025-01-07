@@ -32,12 +32,12 @@ function App() {
   }, [isAuthenticated]);
 
   const handleGoogleAuth = () => {
-    window.open('http://localhost:3000/auth/google', '_blank', 'width=500,height=600');
+    window.open('https://mail-automation.onrender.com/auth/google', '_blank', 'width=500,height=600');
   };
 
   const fetchAnalyticsData = async () => {
     try {
-      const response = await axios.get('http://localhost:3000/analytics');
+      const response = await axios.get('https://mail-automation.onrender.com/analytics');
       setAnalyticsData(response.data);
     } catch (error) {
       console.error('Error fetching analytics data:', error);
@@ -70,7 +70,7 @@ function App() {
     formData.append('throttleLimit', throttleLimit);
 
     try {
-      await axios.post('http://localhost:3000/send-bulk-emails', formData, {
+      await axios.post('https://mail-automation.onrender.com/send-bulk-emails', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
