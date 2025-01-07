@@ -93,6 +93,8 @@ function App() {
 
 
           <div className='form-container'>
+                    <UserEmail/>
+
           <form className='form1' onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", maxWidth: "400px" }}>
           <h2> Ask AI to create and send your Emails</h2>
             <div>              
@@ -141,7 +143,6 @@ function App() {
             </div>
           </form>
 
-        <UserEmail/>
           </div>
 
           <h2>Email Analytics</h2>
