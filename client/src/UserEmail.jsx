@@ -68,7 +68,7 @@ function UserEmail() {
     formData.append('throttleLimit', throttleLimit);
 
     try {
-      await axios.post('http://localhost:3000/send-bulk-emails/user', formData, {
+      await axios.post('https://mail-automation.onrender.com/send-bulk-emails/user', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
