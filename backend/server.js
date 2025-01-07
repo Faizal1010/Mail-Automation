@@ -18,6 +18,10 @@ dotenv.config();
 const app = express();
 app.use(cors());
 app.use(express.json());
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir); // Create the directory if it doesn't exist
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
