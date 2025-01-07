@@ -82,7 +82,7 @@ app.get('/auth/google/callback', async (req, res) => {
     userEmail = userInfo.data.email;
 
     res.send(
-      `<script>window.opener.postMessage('authenticated', 'http://localhost:5173');window.close();</script>`
+      `<script>window.opener.postMessage('authenticated', 'https://mail-automation-frontend.onrender.com/');window.close();</script>`
     );
   } catch (error) {
     console.error('Error during token exchange:', error);
