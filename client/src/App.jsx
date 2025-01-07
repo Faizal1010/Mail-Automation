@@ -93,7 +93,7 @@ function App() {
 
 
           <div className='form-container'>
-          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", maxWidth: "400px" }}>
+          <form className='form1' onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", maxWidth: "400px" }}>
           <h2> Ask AI to create and send your Emails</h2>
             <div>              
             Please Upload CSV

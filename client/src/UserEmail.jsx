@@ -85,11 +85,11 @@ function UserEmail() {
     setAttachment(event.target.files[0]);
   };
   return (
-    <div className="App" style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
+    <div className="App2" style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       {/* <h1>Email Scheduler and Analytics</h1> */}
 
         <div>
-          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", maxWidth: "400px" }}>
+          <form className='form2' onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", maxWidth: "400px" }}>
             <div>              
           <h2>create your Emails yourself</h2>
             Please Upload CSV
