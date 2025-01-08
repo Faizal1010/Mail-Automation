@@ -14,6 +14,8 @@ const path = require('path');
 
 
 dotenv.config();
+process.env.TZ = 'Asia/Kolkata'; // Set timezone explicitly
+
 
 const app = express();
 app.use(cors());
