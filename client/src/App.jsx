@@ -161,7 +161,8 @@ function App() {
                   <td>{email.companyName}</td>
                   <td>{email.to}</td>
                   <td>{email.status}</td>
-                  <td>{new Date(email.sendTime).toLocaleString()}</td>
+                  <td>{new Date(email.sendTime).toISOString().replace('T', ' ').substring(0, 16)}</td>
+
                 </tr>
               ))}
             </tbody>
